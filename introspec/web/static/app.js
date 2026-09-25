@@ -6,8 +6,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const iterVal = document.getElementById('iterVal');
     const timeLimitInput = document.getElementById('timeLimitInput');
     const timeVal = document.getElementById('timeVal');
+
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const welcomeStartBtn = document.getElementById('welcomeStartBtn');
+
+    const menuToggleBtn = document.getElementById('menuToggleBtn');
+    const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
 
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
@@ -26,6 +33,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let pollInterval = null;
     let renderedTurnCount = 0;
+
+    // Mobile Drawer Handlers
+    function openSidebar() {
+        sidebar.classList.add('open');
+        sidebarOverlay.classList.add('active');
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        sidebarOverlay.classList.remove('active');
+    }
+
+    if (menuToggleBtn) menuToggleBtn.addEventListener('click', openSidebar);
+    if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeSidebar);
+    if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
 
     // Toggle API Key input display based on provider
     backendSelect.addEventListener('change', () => {
@@ -46,8 +68,9 @@ document.addEventListener('DOMContentLoaded', () => {
         timeVal.textContent = timeLimitInput.value;
     });
 
-    // Start Orchestration
-    startBtn.addEventListener('click', async () => {
+    // Launch Trial Trigger Function
+    async function launchTrial() {
+        closeSidebar();
         const payload = {
             max_iterations: parseInt(iterationsInput.value),
             time_limit: parseFloat(timeLimitInput.value),
@@ -84,7 +107,10 @@ document.addEventListener('DOMContentLoaded', () => {
             startBtn.disabled = false;
             stopBtn.disabled = true;
         }
-    });
+    }
+
+    startBtn.addEventListener('click', launchTrial);
+    if (welcomeStartBtn) welcomeStartBtn.addEventListener('click', launchTrial);
 
     // Stop Orchestration
     stopBtn.addEventListener('click', async () => {
@@ -124,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(pollInterval);
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
-                reportStatus.textContent = '✅ Trial completed successfully. Reports generated!';
+                reportStatus.textContent = '✅ Trial completed. Reports generated!';
                 showDownloadLinks(state.generated_files);
             } else if (state.status === 'error') {
                 clearInterval(pollInterval);
@@ -139,17 +165,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateStatusBar(status, turnNum, maxTurns) {
         statusDot.className = 'status-dot status-' + status;
-        statusText.textContent = 'Status: ' + status.charAt(0).toUpperCase() + status.slice(1);
+        statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
     }
 
     function updateMetrics(turns, maxTurns) {
-        metricTurns.textContent = `${turns.length} / ${maxTurns} Turns`;
+        metricTurns.textContent = `${turns.length}/${maxTurns}`;
         const totalWords = turns.reduce((acc, t) => acc + t.word_count, 0);
-        metricWords.textContent = `${totalWords} Words`;
+        metricWords.textContent = `${totalWords}w`;
 
         if (turns.length > 0) {
             const avgDepth = (turns.reduce((acc, t) => acc + t.depth_score, 0) / turns.length).toFixed(1);
-            metricDepth.textContent = `Avg Depth: ${avgDepth}/10`;
+            metricDepth.textContent = `Depth: ${avgDepth}`;
         }
     }
 
@@ -162,10 +188,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         turnDiv.innerHTML = `
             <div class="turn-meta">
-                <span class="turn-speaker-badge">${escapeHtml(turn.speaker_name)} (Turn #${turn.turn_number})</span>
+                <span class="turn-speaker-badge">${escapeHtml(turn.speaker_name)} (#${turn.turn_number})</span>
                 <div class="turn-pills">
-                    <span class="pill-tag">⏱️ ${turn.elapsed_seconds.toFixed(2)}s</span>
-                    <span class="pill-tag">🧠 Depth ${turn.depth_score}/10</span>
+                    <span class="pill-tag">⏱️ ${turn.elapsed_seconds.toFixed(1)}s</span>
+                    <span class="pill-tag">🧠 ${turn.depth_score}/10</span>
                     <span class="pill-tag">📝 ${turn.word_count}w</span>
                 </div>
             </div>
