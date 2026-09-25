@@ -1,0 +1,4 @@
+# Introspec requires zero external dependencies by default!
+# Uses standard Python library (urllib, http.server, json, dataclasses, argparse)
+# Optional dependencies for enhanced features:
+# rich>=13.0.0
