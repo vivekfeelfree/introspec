@@ -51,6 +51,10 @@ class IntrospecHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "generated_files": current_run_state.get("generated_files", {}),
                 "has_result": current_run_state.get("result") is not None
             })
+        elif path == "/api/logs":
+            from introspec.logger import IntrospecLogger
+            logs = IntrospecLogger.get_recent_logs(max_lines=100)
+            self.send_json_response({"logs": logs})
         elif path.startswith("/reports/"):
             # Serve generated report files directly from output directory
             file_name = os.path.basename(path)

@@ -44,7 +44,7 @@ class Agent:
     def speak(
         self,
         conversation_history: List[Dict[str, str]],
-        max_tokens: int = 500,
+        max_tokens: int = 2048,
     ) -> str:
         """
         Generate agent utterance based on historical dialog.

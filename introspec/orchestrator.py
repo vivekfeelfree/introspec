@@ -205,6 +205,17 @@ class Orchestrator:
             )
             turns.append(turn)
 
+            # Log turn event
+            from introspec.logger import IntrospecLogger
+            IntrospecLogger.log_turn_event(
+                turn_number=turn_idx,
+                speaker_name=speaker.name,
+                model_name=speaker.model_name or "gemini-3.6-flash",
+                duration_sec=turn_elapsed,
+                word_count=words,
+                depth_score=depth,
+            )
+
             # Update histories for next turn
             if speaker_id == 2:
                 # Agent 2 produced content as assistant
