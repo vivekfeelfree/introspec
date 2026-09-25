@@ -87,6 +87,8 @@ class AntigravityBackend(BaseBackend):
 class GeminiBackend(BaseBackend):
     """Google Gemini API Backend using standard urllib."""
 
+    FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
+
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
         if not api_key:
             raise ValueError("Gemini API key is required. Set GEMINI_API_KEY environment variable or pass --api-key.")
@@ -101,58 +103,67 @@ class GeminiBackend(BaseBackend):
         temperature: float = 0.7,
         max_tokens: int = 500,
     ) -> str:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
-        
-        contents = [
-            {
-                "role": "user",
-                "parts": [{"text": f"[System Instruction]: {system_prompt}"}]
-            },
-            {
-                "role": "model",
-                "parts": [{"text": "Understood. I will strictly follow these instructions and maintain my persona."}]
+        models_to_try = [self.model] + [m for m in self.FALLBACK_MODELS if m != self.model]
+
+        last_error = None
+        for current_model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={self.api_key}"
+            
+            contents = [
+                {
+                    "role": "user",
+                    "parts": [{"text": f"[System Instruction]: {system_prompt}"}]
+                },
+                {
+                    "role": "model",
+                    "parts": [{"text": "Understood. I will strictly follow these instructions and maintain my persona."}]
+                }
+            ]
+
+            for msg in conversation_history:
+                role = "user" if msg["role"] in ["user", "human_inquirer"] else "model"
+                contents.append({
+                    "role": role,
+                    "parts": [{"text": msg["content"]}]
+                })
+
+            payload = {
+                "contents": contents,
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": max_tokens,
+                }
             }
-        ]
 
-        for msg in conversation_history:
-            role = "user" if msg["role"] in ["user", "human_inquirer"] else "model"
-            contents.append({
-                "role": role,
-                "parts": [{"text": msg["content"]}]
-            })
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
 
-        payload = {
-            "contents": contents,
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens,
-            }
-        }
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    with urllib.request.urlopen(req) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts:
+                                return parts[0].get("text", "")
+                    raise RuntimeError("Empty response received from Gemini API.")
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e)
+                    if "429" in err_str or "503" in err_str or "ResourceExhausted" in err_str:
+                        sleep_time = (attempt + 1) * 4.0
+                        time.sleep(sleep_time)
+                        continue
+                    else:
+                        break
 
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                with urllib.request.urlopen(req) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts:
-                            return parts[0].get("text", "")
-                raise RuntimeError("Empty response received from Gemini API.")
-            except Exception as e:
-                if attempt < max_retries - 1 and ("503" in str(e) or "429" in str(e)):
-                    sleep_time = 3.0 * (attempt + 1)
-                    time.sleep(sleep_time)
-                    continue
-                raise RuntimeError(f"Gemini API Error: {str(e)}")
+        raise RuntimeError(f"Gemini API Rate Limit / Exhausted: {last_error}. Retried across models {models_to_try}.")
 
 
 class OpenAIBackend(BaseBackend):
