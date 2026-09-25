@@ -573,7 +573,66 @@ html, body {
         justify-content: space-between;
     }
 
-    .btn-sm {
-        flex: 1;
-    }
+/* Thinking Spinner & Error Cards */
+.thinking-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    align-self: center;
+    max-width: 90%;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.thinking-spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(56, 189, 248, 0.2);
+    border-top-color: var(--accent-cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.thinking-text {
+    font-size: 0.88rem;
+    color: var(--accent-cyan);
+    font-weight: 500;
+}
+
+.error-card {
+    background: rgba(244, 63, 94, 0.12);
+    border: 1px solid var(--danger-color);
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
+    max-width: 90%;
+    align-self: center;
+    margin: 1rem 0;
+    text-align: center;
+}
+
+.error-header {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--danger-color);
+    margin-bottom: 0.5rem;
+}
+
+.error-body {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    line-height: 1.5;
+    margin-bottom: 1rem;
+    word-break: break-word;
+}
+
+.error-retry-btn {
+    max-width: 200px;
+    margin: 0 auto;
 }

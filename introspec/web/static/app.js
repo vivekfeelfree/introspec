@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const metricWords = document.getElementById('metricWords');
 
     const chatContainer = document.getElementById('chatContainer');
-    const welcomeCard = document.getElementById('welcomeCard');
     const reportStatus = document.getElementById('reportStatus');
     const downloadGroup = document.getElementById('downloadGroup');
 
@@ -33,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let pollInterval = null;
     let renderedTurnCount = 0;
+    let activeThinkingCard = null;
 
     // Mobile Drawer Handlers
     function openSidebar() {
@@ -83,9 +83,12 @@ document.addEventListener('DOMContentLoaded', () => {
         startBtn.disabled = true;
         stopBtn.disabled = false;
         renderedTurnCount = 0;
-        chatContainer.innerHTML = '';
         downloadGroup.style.display = 'none';
         reportStatus.textContent = 'Orchestration starting...';
+
+        // Clear chat and show initial loading card
+        chatContainer.innerHTML = '';
+        showThinkingIndicator('Starting dual-agent orchestration session...');
 
         try {
             const resp = await fetch('/api/start', {
@@ -95,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await resp.json();
             if (data.error) {
-                alert(data.error);
+                showErrorCard(data.error);
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
                 return;
@@ -103,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             startPolling();
         } catch (err) {
-            alert('Failed to connect to Introspec server: ' + err.message);
+            showErrorCard('Failed to connect to Introspec server: ' + err.message);
             startBtn.disabled = false;
             stopBtn.disabled = true;
         }
@@ -116,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     stopBtn.addEventListener('click', async () => {
         try {
             await fetch('/api/stop', { method: 'POST' });
-            reportStatus.textContent = 'Stop requested... waiting for current turn to complete.';
+            reportStatus.textContent = 'Stop requested... finishing active turn.';
         } catch (err) {
             console.error(err);
         }
@@ -137,26 +140,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Render new turns
             if (state.turns && state.turns.length > renderedTurnCount) {
+                removeThinkingIndicator();
                 const newTurns = state.turns.slice(renderedTurnCount);
                 newTurns.forEach(t => renderTurn(t));
                 renderedTurnCount = state.turns.length;
 
                 // Update metrics
                 updateMetrics(state.turns, state.max_iterations);
+
+                // Show thinking indicator for NEXT turn if trial still running
+                if (state.status === 'running' && renderedTurnCount < state.max_iterations) {
+                    const nextSpeaker = (renderedTurnCount % 2 === 0) ? 'Agent 2 (Human Inquirer)' : 'Agent 1 (Transparent AI)';
+                    showThinkingIndicator(`${nextSpeaker} is reasoning & generating response...`);
+                }
+            } else if (state.status === 'running' && renderedTurnCount === 0) {
+                const initialSpeaker = 'Agent 2 (Human Inquirer)';
+                showThinkingIndicator(`${initialSpeaker} is generating opening question...`);
             }
 
             // Handle completion or error
             if (state.status === 'completed') {
                 clearInterval(pollInterval);
+                removeThinkingIndicator();
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
-                reportStatus.textContent = '✅ Trial completed. Reports generated!';
+                reportStatus.textContent = '✅ Trial completed. Reports ready!';
                 showDownloadLinks(state.generated_files);
             } else if (state.status === 'error') {
                 clearInterval(pollInterval);
+                removeThinkingIndicator();
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
-                reportStatus.textContent = '❌ Error: ' + (state.error_message || 'Trial failed');
+                const errorMsg = state.error_message || 'Trial failed to execute';
+                reportStatus.textContent = '❌ Error: ' + errorMsg;
+                showErrorCard(errorMsg);
             }
         } catch (err) {
             console.error('Polling error:', err);
@@ -200,6 +217,40 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         chatContainer.appendChild(turnDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function showThinkingIndicator(message) {
+        if (!activeThinkingCard) {
+            activeThinkingCard = document.createElement('div');
+            activeThinkingCard.className = 'thinking-card';
+            chatContainer.appendChild(activeThinkingCard);
+        }
+        activeThinkingCard.innerHTML = `
+            <div class="thinking-spinner"></div>
+            <span class="thinking-text">${escapeHtml(message)}</span>
+        `;
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function removeThinkingIndicator() {
+        if (activeThinkingCard) {
+            activeThinkingCard.remove();
+            activeThinkingCard = null;
+        }
+    }
+
+    function showErrorCard(message) {
+        removeThinkingIndicator();
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error-card';
+        errDiv.innerHTML = `
+            <div class="error-header">⚠️ Trial Execution Notice</div>
+            <div class="error-body">${escapeHtml(message)}</div>
+            <button class="btn btn-primary error-retry-btn">Try Again</button>
+        `;
+        errDiv.querySelector('.error-retry-btn').addEventListener('click', launchTrial);
+        chatContainer.appendChild(errDiv);
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
