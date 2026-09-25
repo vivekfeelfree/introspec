@@ -111,7 +111,7 @@ def run_orchestration_background(params: Dict[str, Any]):
     try:
         max_iters = int(params.get("max_iterations", 10))
         time_lim = float(params.get("time_limit", 120.0))
-        backend_p = params.get("backend_provider", "mock")
+        backend_p = params.get("backend_provider", "antigravity")
         model_n = params.get("model_name", "")
         gemini_key = params.get("gemini_api_key")
         openai_key = params.get("openai_api_key")

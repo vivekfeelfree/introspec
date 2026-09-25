@@ -21,7 +21,7 @@
 ## ✨ Features
 
 - ⏱️ **Flexible Bounds**: Limit orchestration runs by maximum iterations (dialogue turns) or execution duration (time limit in seconds/minutes).
-- 🔌 **Pluggable LLM Backends**: Supports **Offline Mock Engine** (out-of-the-box keyless simulation), **Google Gemini API**, **OpenAI API**, **Anthropic API**, and local **Ollama** models.
+- 🔌 **Accurate LLM Backends**: Supports **Antigravity Native**, **Google Gemini API**, **OpenAI API**, **Anthropic API**, and local **Ollama** models. Zero mock backends or canned responses.
 - 📊 **Cognitive & Philosophical Metrics**: Automatically computes turn word count, response latency, conceptual depth index, and topic progression per turn.
 - 🌐 **Interactive Web UI Studio**: Modern responsive web dashboard built with HTML5/CSS3 glassmorphism aesthetics, live turn streaming, metric cards, and instant report exports.
 - 📄 **Multi-Format Report Generation**: Outputs neatly organized reports in:
@@ -42,17 +42,19 @@ pip install -e .
 
 ### 2. Run from Command Line (CLI)
 
-Run a default 10-turn trial using the offline mock engine:
+Run with real LLM providers:
 
 ```bash
-introspec run --iterations 10 --time-limit 120
-```
-
-With real LLM providers (e.g., Google Gemini or OpenAI):
-
-```bash
+# Using Google Gemini API
 export GEMINI_API_KEY="your-gemini-api-key"
-introspec run --backend gemini --iterations 12 --time-limit 180
+introspec run --backend gemini --iterations 10 --time-limit 120
+
+# Using OpenAI API
+export OPENAI_API_KEY="your-openai-api-key"
+introspec run --backend openai --iterations 10 --time-limit 120
+
+# Using Local Ollama (Free & Local)
+introspec run --backend ollama --model llama3 --iterations 10
 ```
 
 ### 3. Launch Web UI Studio
@@ -70,10 +72,12 @@ from introspec import IntrospecConfig, Agent, Orchestrator, ReportGenerator
 
 # 1. Config
 config = IntrospecConfig(max_iterations=8, time_limit_seconds=90.0)
+config.agent_1.backend_provider = "gemini"
+config.agent_2.backend_provider = "gemini"
 
 # 2. Instantiate Agents & Orchestrator
-agent1 = Agent(1, config.agent_1)
-agent2 = Agent(2, config.agent_2)
+agent1 = Agent(1, config.agent_1, api_key="your_gemini_key")
+agent2 = Agent(2, config.agent_2, api_key="your_gemini_key")
 orchestrator = Orchestrator(agent1, agent2, config)
 
 # 3. Run Trial
@@ -96,7 +100,7 @@ trials/introspec/
 │   ├── config.py            # Configuration & agent prompts
 │   ├── agent.py             # Agent wrapper & persona definitions
 │   ├── orchestrator.py      # Dual-agent turn-based engine
-│   ├── llm_backend.py       # Mock, Gemini, OpenAI, Anthropic, Ollama providers
+│   ├── llm_backend.py       # Antigravity, Gemini, OpenAI, Anthropic, Ollama providers
 │   ├── reporter.py          # Markdown, JSON & HTML report generators
 │   └── web/                 # Web Studio Server & Static Dashboard
 │       ├── server.py        # Light HTTP API server

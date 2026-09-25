@@ -160,7 +160,7 @@ def main():
     run_parser = subparsers.add_parser("run", help="Run dialogue orchestration trial")
     run_parser.add_argument("-n", "--iterations", type=int, default=10, help="Max turns / iterations")
     run_parser.add_argument("-t", "--time-limit", type=float, default=120.0, help="Time limit in seconds (0 for no limit)")
-    run_parser.add_argument("-b", "--backend", type=str, default="mock", choices=["mock", "antigravity", "gemini", "openai", "anthropic", "ollama"], help="LLM Backend provider")
+    run_parser.add_argument("-b", "--backend", type=str, default="antigravity", choices=["antigravity", "gemini", "openai", "anthropic", "ollama"], help="LLM Backend provider")
     run_parser.add_argument("-m", "--model", type=str, default=None, help="Model name")
     run_parser.add_argument("-k", "--api-key", type=str, default=None, help="API key for selected provider")
     run_parser.add_argument("--ollama-url", type=str, default="http://localhost:11434", help="Ollama base URL")
