@@ -312,7 +312,8 @@ def get_backend(
         mdl = model or "gemini-2.5-flash"
         return AntigravityBackend(agent_id=agent_id, model=mdl)
     elif provider in ["gemini", "google"]:
-        key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
+        from introspec.config import _find_gemini_key
+        key = api_key or _find_gemini_key() or ""
         mdl = model or "gemini-2.5-flash"
         return GeminiBackend(api_key=key, model=mdl)
     elif provider == "openai":
