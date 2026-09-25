@@ -51,6 +51,29 @@ class IntrospecHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "generated_files": current_run_state.get("generated_files", {}),
                 "has_result": current_run_state.get("result") is not None
             })
+        elif path.startswith("/reports/"):
+            # Serve generated report files directly from output directory
+            file_name = os.path.basename(path)
+            output_dir = os.path.abspath(current_run_state.get("output_dir", "reports"))
+            file_path = os.path.join(output_dir, file_name)
+            if os.path.exists(file_path):
+                self.send_response(200)
+                if file_path.endswith(".html"):
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                elif file_path.endswith(".json"):
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                else:
+                    self.send_header("Content-Type", "text/markdown; charset=utf-8")
+                
+                with open(file_path, "rb") as f:
+                    content = f.read()
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            else:
+                self.send_json_response({"error": f"Report file '{file_name}' not found"}, status=404)
+                return
         else:
             # Serve static assets or default to index.html
             super().do_GET()
@@ -161,6 +184,7 @@ def run_orchestration_background(params: Dict[str, Any]):
 
 def start_web_server(port: int = 8080):
     """Start HTTP Web Server on specified port."""
+    socketserver.TCPServer.allow_reuse_address = True
     handler = IntrospecHTTPRequestHandler
     with socketserver.TCPServer(("", port), handler) as httpd:
         print(f"🚀 Introspec Web UI running at http://localhost:{port}")

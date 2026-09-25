@@ -205,9 +205,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showDownloadLinks(files) {
         if (!files) return;
-        if (files.markdown) btnMd.href = '/' + files.markdown;
-        if (files.json) btnJson.href = '/' + files.json;
-        if (files.html) btnHtml.href = '/' + files.html;
+        if (files.markdown) {
+            const name = files.markdown.split('/').pop().split('\\').pop();
+            btnMd.href = '/reports/' + name;
+        }
+        if (files.json) {
+            const name = files.json.split('/').pop().split('\\').pop();
+            btnJson.href = '/reports/' + name;
+        }
+        if (files.html) {
+            const name = files.html.split('/').pop().split('\\').pop();
+            btnHtml.href = '/reports/' + name;
+        }
         downloadGroup.style.display = 'flex';
     }
 
