@@ -175,8 +175,13 @@ class Orchestrator:
                 speaker_id = 1
                 history_for_call = history_agent_1
 
+            # Ensure history is not completely empty for the initial turn
+            call_history = list(history_for_call)
+            if not call_history:
+                call_history = [{"role": "user", "content": "[Initiate the dialogue according to your system persona instruction.]"}]
+
             # Generate response
-            response_text = speaker.speak(history_for_call)
+            response_text = speaker.speak(call_history)
             turn_elapsed = time.time() - turn_start_time
             now_iso = datetime.now().strftime("%H:%M:%S")
 

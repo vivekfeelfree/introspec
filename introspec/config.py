@@ -38,6 +38,22 @@ class AgentConfig:
     temperature: float = 0.7
 
 
+def _find_gemini_key() -> Optional[str]:
+    key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if key:
+        return key.strip()
+    key_path = os.path.expanduser("~/.gemini_api_key")
+    if os.path.exists(key_path):
+        try:
+            with open(key_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    return content
+        except Exception:
+            pass
+    return None
+
+
 @dataclass
 class IntrospecConfig:
     # Agent definitions
@@ -57,7 +73,7 @@ class IntrospecConfig:
     # Orchestrator parameters
     max_iterations: int = 10         # Maximum dialogue turns (exchanges)
     time_limit_seconds: Optional[float] = 120.0  # Time limit in seconds (None for unlimited)
-    delay_between_turns: float = 0.5   # Delay between turns for natural pace (seconds)
+    delay_between_turns: float = 1.0   # Delay between turns for natural pace and API rate-limiting (seconds)
     initial_speaker: str = "agent_2"   # Who initiates dialogue: agent_1 or agent_2
 
     # Reporting options
@@ -66,7 +82,7 @@ class IntrospecConfig:
     title: str = "Introspec Dialogue Trial"
 
     # API keys / Endpoints
-    gemini_api_key: Optional[str] = field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+    gemini_api_key: Optional[str] = field(default_factory=_find_gemini_key)
     openai_api_key: Optional[str] = field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     anthropic_api_key: Optional[str] = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY"))
     ollama_base_url: str = field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))

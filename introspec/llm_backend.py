@@ -32,11 +32,12 @@ class AntigravityBackend(BaseBackend):
     """
     Antigravity Native LLM Backend.
     Interfaces directly with the Antigravity subagent / execution environment bridge.
-    Requires an active Antigravity session or bridge environment.
+    When running via CLI without IPC file, automatically leverages local Antigravity Gemini credentials.
     """
 
-    def __init__(self, agent_id: int):
+    def __init__(self, agent_id: int, model: Optional[str] = None):
         self.agent_id = agent_id
+        self.model = model or "gemini-2.5-flash"
         self.ipc_file = os.getenv("INTROSPEC_ANTIGRAVITY_IPC")
 
     def generate_response(
@@ -69,22 +70,29 @@ class AntigravityBackend(BaseBackend):
             except Exception as e:
                 raise RuntimeError(f"Antigravity IPC bridge error: {e}")
 
-        # If running in terminal environment where IPC file is not set, instruct user cleanly
+        # Check for local Antigravity gemini key
+        from introspec.config import _find_gemini_key
+        key = _find_gemini_key()
+        if key:
+            gemini_backend = GeminiBackend(api_key=key, model=self.model)
+            return gemini_backend.generate_response(system_prompt, conversation_history, temperature, max_tokens)
+
+        # If no key found anywhere, instruct user cleanly
         raise RuntimeError(
-            f"[Agent {self.agent_id}] Antigravity Native Backend requires active session bridge or API key configuration.\n"
-            f"Please specify an active backend: --backend gemini (with GEMINI_API_KEY), --backend openai (with OPENAI_API_KEY), "
-            f"--backend anthropic (with ANTHROPIC_API_KEY), or --backend ollama (with local Ollama)."
+            f"[Agent {self.agent_id}] Antigravity Native Backend requires active session bridge or Gemini API key.\n"
+            f"Please specify an active backend or save your key to ~/.gemini_api_key."
         )
 
 
 class GeminiBackend(BaseBackend):
     """Google Gemini API Backend using standard urllib."""
 
-    def __init__(self, api_key: str, model: str = "gemini-1.5-pro"):
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
         if not api_key:
             raise ValueError("Gemini API key is required. Set GEMINI_API_KEY environment variable or pass --api-key.")
         self.api_key = api_key
-        self.model = model
+        # Strip models/ prefix if provided
+        self.model = model.replace("models/", "")
 
     def generate_response(
         self,
@@ -128,17 +136,23 @@ class GeminiBackend(BaseBackend):
             method="POST"
         )
 
-        try:
-            with urllib.request.urlopen(req) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        return parts[0].get("text", "")
-            raise RuntimeError("Empty response received from Gemini API.")
-        except Exception as e:
-            raise RuntimeError(f"Gemini API Error: {str(e)}")
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            return parts[0].get("text", "")
+                raise RuntimeError("Empty response received from Gemini API.")
+            except Exception as e:
+                if attempt < max_retries - 1 and ("503" in str(e) or "429" in str(e)):
+                    sleep_time = 3.0 * (attempt + 1)
+                    time.sleep(sleep_time)
+                    continue
+                raise RuntimeError(f"Gemini API Error: {str(e)}")
 
 
 class OpenAIBackend(BaseBackend):
@@ -295,10 +309,11 @@ def get_backend(
     """Factory function to instantiate appropriate LLM backend."""
     provider = provider.lower()
     if provider == "antigravity":
-        return AntigravityBackend(agent_id=agent_id)
+        mdl = model or "gemini-2.5-flash"
+        return AntigravityBackend(agent_id=agent_id, model=mdl)
     elif provider in ["gemini", "google"]:
         key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
-        mdl = model or "gemini-1.5-pro"
+        mdl = model or "gemini-2.5-flash"
         return GeminiBackend(api_key=key, model=mdl)
     elif provider == "openai":
         key = api_key or os.getenv("OPENAI_API_KEY") or ""
