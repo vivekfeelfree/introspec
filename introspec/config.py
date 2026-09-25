@@ -33,7 +33,7 @@ class AgentConfig:
     name: str
     role: str
     system_prompt: str
-    backend_provider: str = "mock"  # mock, gemini, openai, anthropic, ollama
+    backend_provider: str = "mock"  # mock, antigravity, gemini, openai, anthropic, ollama
     model_name: Optional[str] = None
     temperature: float = 0.7
 
