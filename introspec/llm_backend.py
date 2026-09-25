@@ -87,7 +87,7 @@ class AntigravityBackend(BaseBackend):
 class GeminiBackend(BaseBackend):
     """Google Gemini API Backend using standard urllib."""
 
-    FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
+    FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.6-flash", "gemini-flash-latest"]
 
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
         if not api_key:
@@ -160,10 +160,13 @@ class GeminiBackend(BaseBackend):
                         sleep_time = (attempt + 1) * 4.0
                         time.sleep(sleep_time)
                         continue
+                    elif "404" in err_str:
+                        # Model name not found on endpoint, try next fallback model
+                        break
                     else:
                         break
 
-        raise RuntimeError(f"Gemini API Rate Limit / Exhausted: {last_error}. Retried across models {models_to_try}.")
+        raise RuntimeError(f"Gemini API Error across models {models_to_try}: {last_error}")
 
 
 class OpenAIBackend(BaseBackend):
