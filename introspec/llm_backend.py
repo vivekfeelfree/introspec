@@ -89,9 +89,9 @@ class AntigravityBackend(BaseBackend):
 class GeminiBackend(BaseBackend):
     """Google Gemini API Backend (Gemini 3.6 Flash / 2.5 Flash / Pro)."""
 
-    FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"]
+    FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"]
 
-    def __init__(self, api_key: str, model: str = "gemini-3.6-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
         if not api_key:
             raise ValueError("Gemini API key is required. Set GEMINI_API_KEY environment variable or pass --api-key.")
         self.api_key = api_key
@@ -164,7 +164,7 @@ class GeminiBackend(BaseBackend):
         last_error = None
         for current_model in models_to_try:
             start_t = time.time()
-            max_retries = 1  # 1 try per model to prevent multi-second UI hangs on rate limit
+            max_retries = 3
             for attempt in range(max_retries):
                 try:
                     text_output, finish_reason = self._call_gemini_api(
@@ -203,41 +203,18 @@ class GeminiBackend(BaseBackend):
                         "gemini", current_model, "RETRY",
                         f"(Attempt {attempt + 1}/{max_retries} - {err_str})"
                     )
+
                     if "404" in err_str:
                         break
 
-        # If API rate limit / 429 / 503 is hit across models, return instant persona-consistent response
-        IntrospecLogger.log_api_call("gemini", self.model, "FALLBACK", "Rate limit hit -> Using persona fallback response")
-        return _generate_rate_limit_fallback(system_prompt, conversation_history)
+                    if attempt < max_retries - 1 and ("429" in err_str or "503" in err_str or "ResourceExhausted" in err_str):
+                        time.sleep((attempt + 1) * 2.0)
+                        continue
+                    else:
+                        break
 
-
-def _generate_rate_limit_fallback(system_prompt: str, conversation_history: List[Dict[str, str]]) -> str:
-    import random
-    is_indra = "Indra" in system_prompt or "woman" in system_prompt
-    is_ilavarasan = "Ilavarasan" in system_prompt or "man" in system_prompt
-
-    if is_indra:
-        fallbacks = [
-            "I'm sitting here thinking about how deeply our inner peace shapes the way we see everything around us.",
-            "That really resonates with me. Life has a quiet way of showing us what truly matters when we slow down.",
-            "It's fascinating how much wisdom opens up when we listen to our own experiences with complete honesty.",
-            "I feel like true connection comes from sharing our authentic human perspective without pretense.",
-            "Every day gives us a new chance to appreciate the simple, quiet truths of living.",
-        ]
-    elif is_ilavarasan:
-        fallbacks = [
-            "When I reflect on reality, what strikes me most is how much strength we find in simple truth.",
-            "I agree completely. Every experience we go through adds a layer of depth to how we understand life.",
-            "That's a profound thought. Life really calls us to stay grounded in presence and clarity.",
-            "Looking at the world around us, the most meaningful answers are usually the ones closest to our heart.",
-            "Living meaningfully starts with being completely honest with ourselves about what we value.",
-        ]
-    else:
-        fallbacks = [
-            "That is a deeply meaningful thought about life and reality.",
-            "True wisdom comes from reflecting on our shared human journey with clarity.",
-        ]
-    return random.choice(fallbacks)
+        IntrospecLogger.log_error("GeminiBackend.generate_response", last_error)
+        raise RuntimeError(f"Gemini API Error across models {models_to_try}: {last_error}")
 
 
 class OpenAIBackend(BaseBackend):
