@@ -227,7 +227,7 @@ class GeminiBackend(BaseBackend):
         last_error = None
         for current_model in models_to_try:
             start_t = time.time()
-            max_retries = 3
+            max_retries = 4
             for attempt in range(max_retries):
                 try:
                     text_output, finish_reason = self._call_gemini_api(
@@ -270,14 +270,23 @@ class GeminiBackend(BaseBackend):
                     if "404" in err_str:
                         break
 
-                    if attempt < max_retries - 1 and ("429" in err_str or "503" in err_str or "ResourceExhausted" in err_str):
-                        time.sleep((attempt + 1) * 3.5)
+                    if "429" in err_str or "503" in err_str or "ResourceExhausted" in err_str or "Too Many Requests" in err_str:
+                        backoff = (attempt + 1) * 7.5
+                        IntrospecLogger.log_api_call(
+                            "gemini", current_model, "RATE_LIMIT_PAUSE",
+                            f"429 Quota limit encountered. Sleeping {backoff:.1f}s before retry..."
+                        )
+                        time.sleep(backoff)
                         continue
                     else:
                         break
 
+            # Pause before attempting fallback model on rate limits
+            if last_error and ("429" in str(last_error) or "Too Many Requests" in str(last_error)):
+                time.sleep(8.0)
+
         IntrospecLogger.log_error("GeminiBackend.generate_response", last_error)
-        raise RuntimeError(f"Gemini API Error across models {models_to_try}: {last_error}")
+        raise RuntimeError(f"Gemini API Quota Error across models {models_to_try}: {last_error}")
 
 
 class OpenAIBackend(BaseBackend):

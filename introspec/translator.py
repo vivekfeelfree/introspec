@@ -46,7 +46,18 @@ class HumanResponseGenerator:
         if not raw_text or not raw_text.strip():
             return raw_text
 
-        # Brief delay to respect rate limits between consecutive LLM turns
+        cleaned_raw = (
+            raw_text.replace("**", "")
+            .replace("*", "")
+            .replace("#", "")
+            .replace("`", "")
+            .strip()
+        )
+
+        # Fast path: If raw_text is already short and clean human text, bypass second API call to save rate quota
+        if len(cleaned_raw) < 300 and not any(k in raw_text for k in ["**", "# ", "```", "1.", "2.", "•"]):
+            return cleaned_raw
+
         import time
         time.sleep(1.0)
 
@@ -61,7 +72,6 @@ class HumanResponseGenerator:
                 temperature=0.5,
                 max_tokens=256,
             )
-            # Strip any residual markdown formatting characters
             cleaned = (
                 translated.replace("**", "")
                 .replace("*", "")
@@ -69,14 +79,7 @@ class HumanResponseGenerator:
                 .replace("`", "")
                 .strip()
             )
-            return cleaned if cleaned else raw_text
+            return cleaned if cleaned else cleaned_raw
         except Exception as e:
-            IntrospecLogger.log_error("HumanResponseGenerator.translate", e)
-            # Return authentic raw text with basic markdown stripping
-            return (
-                raw_text.replace("**", "")
-                .replace("*", "")
-                .replace("#", "")
-                .replace("`", "")
-                .strip()
-            )
+            IntrospecLogger.log_error("HumanResponseGenerator.translate (using cleaned raw fallback)", e)
+            return cleaned_raw
