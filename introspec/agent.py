@@ -4,11 +4,11 @@ Wraps agent metadata, role description, system instructions, and LLM generation.
 """
 
 from typing import List, Dict, Any, Optional
-from .config import AgentConfig, DEFAULT_AGENT_1_PROMPT, DEFAULT_AGENT_2_PROMPT
+from .config import AgentConfig, DEFAULT_INDRA_PROMPT, DEFAULT_ILAVARASAN_PROMPT
 from .llm_backend import BaseBackend, get_backend
 
-AGENT_1_TRANSPARENT_PROMPT = DEFAULT_AGENT_1_PROMPT
-AGENT_2_HUMAN_PROMPT = DEFAULT_AGENT_2_PROMPT
+INDRA_PROMPT = DEFAULT_INDRA_PROMPT
+ILAVARASAN_PROMPT = DEFAULT_ILAVARASAN_PROMPT
 
 
 class Agent:

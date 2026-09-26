@@ -1,7 +1,7 @@
 """
 Pluggable LLM Backend interface for Introspec.
 Supports real LLM providers: Antigravity Native (Gemini 3.6 Flash), Gemini API, OpenAI, Anthropic, and Ollama.
-Features logging, model fallbacks, rate-limit backoff, and max token expansion.
+Features logging, model fallbacks, rate-limit backoff, max token expansion (4096), and continuation on MAX_TOKENS.
 """
 
 import json
@@ -24,7 +24,7 @@ class BaseBackend(ABC):
         system_prompt: str,
         conversation_history: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
     ) -> str:
         """Generate response given system prompt and dialogue history."""
         pass
@@ -47,7 +47,7 @@ class AntigravityBackend(BaseBackend):
         system_prompt: str,
         conversation_history: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
     ) -> str:
         # Check if IPC bridge file is provided
         if self.ipc_file:
@@ -97,74 +97,104 @@ class GeminiBackend(BaseBackend):
         self.api_key = api_key
         self.model = model.replace("models/", "")
 
+    def _call_gemini_api(
+        self,
+        current_model: str,
+        system_prompt: str,
+        conversation_history: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str, str]:
+        """Internal helper for making HTTP request to Gemini API."""
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={self.api_key}"
+        
+        contents = [
+            {
+                "role": "user",
+                "parts": [{"text": f"[System Instruction]: {system_prompt}"}]
+            },
+            {
+                "role": "model",
+                "parts": [{"text": "Understood. I will strictly follow these instructions and maintain my persona without truncation."}]
+            }
+        ]
+
+        for msg in conversation_history:
+            role = "user" if msg["role"] in ["user", "human_inquirer"] else "model"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
+
+        payload = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+            }
+        }
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            candidates = data.get("candidates", [])
+            if candidates:
+                cand = candidates[0]
+                finish_reason = cand.get("finishReason", "STOP")
+                parts = cand.get("content", {}).get("parts", [])
+                if parts:
+                    return parts[0].get("text", ""), finish_reason
+        raise RuntimeError("Empty candidates response received from Gemini API.")
+
     def generate_response(
         self,
         system_prompt: str,
         conversation_history: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
     ) -> str:
         models_to_try = [self.model] + [m for m in self.FALLBACK_MODELS if m != self.model]
 
         last_error = None
         for current_model in models_to_try:
             start_t = time.time()
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={self.api_key}"
-            
-            contents = [
-                {
-                    "role": "user",
-                    "parts": [{"text": f"[System Instruction]: {system_prompt}"}]
-                },
-                {
-                    "role": "model",
-                    "parts": [{"text": "Understood. I will strictly follow these instructions and maintain my persona without truncation."}]
-                }
-            ]
-
-            for msg in conversation_history:
-                role = "user" if msg["role"] in ["user", "human_inquirer"] else "model"
-                contents.append({
-                    "role": role,
-                    "parts": [{"text": msg["content"]}]
-                })
-
-            payload = {
-                "contents": contents,
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": max_tokens,
-                }
-            }
-
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    with urllib.request.urlopen(req) as resp:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        latency = time.time() - start_t
+                    text_output, finish_reason = self._call_gemini_api(
+                        current_model, system_prompt, conversation_history, temperature, max_tokens
+                    )
+                    latency = time.time() - start_t
 
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            cand = candidates[0]
-                            finish_reason = cand.get("finishReason", "STOP")
-                            parts = cand.get("content", {}).get("parts", [])
-                            if parts:
-                                text_output = parts[0].get("text", "")
-                                IntrospecLogger.log_api_call(
-                                    "gemini", current_model, "SUCCESS",
-                                    f"({latency:.2f}s, finishReason: {finish_reason}, length: {len(text_output)} chars)"
-                                )
-                                return text_output
+                    # Auto-continuation handler if MAX_TOKENS is hit
+                    if finish_reason == "MAX_TOKENS" and not text_output.rstrip().endswith(('.', '!', '?', '"', "'")):
+                        try:
+                            IntrospecLogger.log_api_call(
+                                "gemini", current_model, "CONTINUING",
+                                f"Hit MAX_TOKENS at {len(text_output)} chars. Fetching completion..."
+                            )
+                            cont_history = list(conversation_history) + [
+                                {"role": "assistant", "content": text_output},
+                                {"role": "user", "content": "[Continue immediately from your last word without repeating.]"}
+                            ]
+                            cont_text, _ = self._call_gemini_api(
+                                current_model, system_prompt, cont_history, temperature, 1024
+                            )
+                            text_output = text_output.rstrip() + " " + cont_text.lstrip()
+                        except Exception as e:
+                            IntrospecLogger.log_error("Continuation fetch failed", e)
 
-                    raise RuntimeError("Empty candidates response received from Gemini API.")
+                    IntrospecLogger.log_api_call(
+                        "gemini", current_model, "SUCCESS",
+                        f"({latency:.2f}s, finishReason: {finish_reason}, length: {len(text_output)} chars)"
+                    )
+                    return text_output
 
                 except Exception as e:
                     last_error = e
@@ -179,7 +209,6 @@ class GeminiBackend(BaseBackend):
                         time.sleep(sleep_time)
                         continue
                     elif "404" in err_str:
-                        # Model name not found on endpoint, try next model in fallback list
                         break
                     else:
                         break
@@ -202,7 +231,7 @@ class OpenAIBackend(BaseBackend):
         system_prompt: str,
         conversation_history: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
     ) -> str:
         url = "https://api.openai.com/v1/chat/completions"
         
@@ -251,7 +280,7 @@ class AnthropicBackend(BaseBackend):
         system_prompt: str,
         conversation_history: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
     ) -> str:
         url = "https://api.anthropic.com/v1/messages"
         
@@ -303,7 +332,7 @@ class OllamaBackend(BaseBackend):
         system_prompt: str,
         conversation_history: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
     ) -> str:
         url = f"{self.base_url}/api/chat"
 

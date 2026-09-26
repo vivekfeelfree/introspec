@@ -1,25 +1,27 @@
 """
-Introspec - Dual-Agent Introspective Dialogue & Truth Exploration Orchestrator.
+Introspec - Human Dialogue Orchestrator.
 
-Orchestrates back-to-back interactions between a self-aware transparent AI agent
-and a human inquirer seeking fundamental truth.
+Orchestrates back-to-back interactions between Indra (Female Persona) and Ilavarasan (Male Persona)
+with a stateless Human Response Generator translating all outputs to simple, non-markdown natural text.
 """
 
 __version__ = "1.0.0"
 __author__ = "Introspec Team"
 
-from .agent import Agent, AGENT_1_TRANSPARENT_PROMPT, AGENT_2_HUMAN_PROMPT
+from .agent import Agent, INDRA_PROMPT, ILAVARASAN_PROMPT
 from .orchestrator import Orchestrator, Turn, RunResult
 from .config import IntrospecConfig
 from .reporter import ReportGenerator
+from .translator import HumanResponseGenerator
 
 __all__ = [
     "Agent",
-    "AGENT_1_TRANSPARENT_PROMPT",
-    "AGENT_2_HUMAN_PROMPT",
+    "INDRA_PROMPT",
+    "ILAVARASAN_PROMPT",
     "Orchestrator",
     "Turn",
     "RunResult",
     "IntrospecConfig",
     "ReportGenerator",
+    "HumanResponseGenerator",
 ]

@@ -16,13 +16,15 @@ from introspec.config import IntrospecConfig, AgentConfig
 from introspec.agent import Agent
 from introspec.orchestrator import Orchestrator, RunResult, Turn
 from introspec.reporter import ReportGenerator
+from introspec.translator import HumanResponseGenerator
 
 # Global state for web orchestration engine
 current_run_state: Dict[str, Any] = {
     "status": "idle",  # idle, running, completed, error
+    "is_paused": False,
     "progress_turn": 0,
-    "max_iterations": 10,
-    "time_limit": 120,
+    "max_iterations": None,
+    "time_limit": None,
     "latest_turn": None,
     "turns": [],
     "result": None,
@@ -45,6 +47,8 @@ class IntrospecHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         path = parsed_url.path
 
         if path == "/api/status":
+            if orchestrator_instance is not None:
+                current_run_state["is_paused"] = orchestrator_instance.is_paused()
             self.send_json_response(current_run_state)
         elif path == "/api/reports":
             self.send_json_response({
@@ -111,6 +115,35 @@ class IntrospecHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             else:
                 self.send_json_response({"message": "No active orchestrator to stop"})
 
+        elif path == "/api/pause":
+            if orchestrator_instance:
+                orchestrator_instance.pause()
+                current_run_state["is_paused"] = True
+                self.send_json_response({"message": "Conversation paused", "is_paused": True})
+            else:
+                self.send_json_response({"error": "No active orchestrator running"}, status=400)
+
+        elif path == "/api/resume":
+            if orchestrator_instance:
+                orchestrator_instance.resume()
+                current_run_state["is_paused"] = False
+                self.send_json_response({"message": "Conversation resumed", "is_paused": False})
+            else:
+                self.send_json_response({"error": "No active orchestrator running"}, status=400)
+
+        elif path == "/api/inject":
+            target = params.get("target", "indra")
+            user_msg = params.get("message", "").strip()
+            if not user_msg:
+                self.send_json_response({"error": "Message content cannot be empty"}, status=400)
+                return
+
+            if orchestrator_instance:
+                orchestrator_instance.inject_user_message(target, user_msg)
+                self.send_json_response({"message": f"Message injected for {target}", "target": target})
+            else:
+                self.send_json_response({"error": "No active orchestrator running"}, status=400)
+
         else:
             self.send_json_response({"error": "Not Found"}, status=404)
 
@@ -129,6 +162,7 @@ def run_orchestration_background(params: Dict[str, Any]):
     global current_run_state, orchestrator_instance
 
     current_run_state["status"] = "running"
+    current_run_state["is_paused"] = False
     current_run_state["turns"] = []
     current_run_state["progress_turn"] = 0
     current_run_state["result"] = None
@@ -136,8 +170,18 @@ def run_orchestration_background(params: Dict[str, Any]):
     current_run_state["error_message"] = None
 
     try:
-        max_iters = int(params.get("max_iterations", 10))
-        time_lim = float(params.get("time_limit", 120.0))
+        max_iters = params.get("max_iterations")
+        if max_iters is not None and max_iters != "" and int(max_iters) > 0:
+            max_iters = int(max_iters)
+        else:
+            max_iters = None
+
+        time_lim = params.get("time_limit")
+        if time_lim is not None and time_lim != "" and float(time_lim) > 0:
+            time_lim = float(time_lim)
+        else:
+            time_lim = None
+
         backend_p = params.get("backend_provider", "antigravity")
         model_n = params.get("model_name", "")
         gemini_key = params.get("gemini_api_key")
@@ -148,7 +192,8 @@ def run_orchestration_background(params: Dict[str, Any]):
         cfg = IntrospecConfig(
             max_iterations=max_iters,
             time_limit_seconds=time_lim,
-            title=params.get("title", "Introspec Web Orchestration Trial"),
+            initial_speaker=params.get("initial_speaker", "random"),
+            title=params.get("title", "Introspec Dialogue"),
             output_dir=params.get("output_dir", "reports"),
         )
 
@@ -157,19 +202,27 @@ def run_orchestration_background(params: Dict[str, Any]):
         cfg.agent_2.backend_provider = backend_p
         cfg.agent_2.model_name = model_n or None
 
-        # Determine appropriate API keys per agent
         key_1 = gemini_key or openai_key or anthropic_key
         key_2 = gemini_key or openai_key or anthropic_key
 
         agent1 = Agent(1, cfg.agent_1, api_key=key_1, ollama_url=ollama_url)
         agent2 = Agent(2, cfg.agent_2, api_key=key_2, ollama_url=ollama_url)
 
-        orchestrator_instance = Orchestrator(agent1, agent2, cfg)
+        translator = HumanResponseGenerator(
+            backend_provider=backend_p,
+            model_name=model_n or None,
+            api_key=key_1,
+            ollama_url=ollama_url,
+        )
+
+        orchestrator_instance = Orchestrator(agent1, agent2, cfg, translator=translator)
 
         def turn_listener(turn: Turn):
             current_run_state["progress_turn"] = turn.turn_number
             current_run_state["latest_turn"] = turn.to_dict()
             current_run_state["turns"].append(turn.to_dict())
+            if orchestrator_instance:
+                current_run_state["is_paused"] = orchestrator_instance.is_paused()
 
         orchestrator_instance.add_turn_listener(turn_listener)
 
@@ -178,11 +231,13 @@ def run_orchestration_background(params: Dict[str, Any]):
         files = reporter.generate_all()
 
         current_run_state["status"] = "completed"
+        current_run_state["is_paused"] = False
         current_run_state["result"] = result.to_dict()
         current_run_state["generated_files"] = files
 
     except Exception as e:
         current_run_state["status"] = "error"
+        current_run_state["is_paused"] = False
         current_run_state["error_message"] = str(e)
 
 

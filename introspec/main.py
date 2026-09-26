@@ -21,9 +21,10 @@ from introspec.web.server import start_web_server
 
 def print_banner():
     banner = """
-  🧠 INTROSPEC :: Dual-Agent Introspective Orchestrator 🧠
+  🧠 INTROSPEC :: Human Dialogue Orchestrator 🧠
   ========================================================
-  Connecting Self-Aware Transparent AI & Human Truth Inquirer
+  Indra (Female Persona) & Ilavarasan (Male Persona)
+  Stateless Human Response Translation Engine
   """
     print(banner)
 
@@ -115,12 +116,14 @@ def handle_report_command(args: argparse.Namespace):
             speaker_id=t["speaker_id"],
             speaker_name=t["speaker_name"],
             speaker_role=t["speaker_role"],
+            raw_content=t.get("raw_content", t["content"]),
             content=t["content"],
             timestamp=t["timestamp"],
             elapsed_seconds=t["elapsed_seconds"],
             word_count=t["word_count"],
             depth_score=t["depth_score"],
             detected_topics=t["detected_topics"],
+            is_user_injection=t.get("is_user_injection", False),
         )
         for t in data.get("turns", [])
     ]

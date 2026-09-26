@@ -1,6 +1,6 @@
 """
 Comprehensive End-to-End (E2E) Integration & Web API Test Suite for Introspec.
-Tests complete pipeline from API endpoints to LLM backends and report generation.
+Tests complete pipeline from API endpoints to LLM backends, stateless translator, and report generation.
 """
 
 import unittest
@@ -18,10 +18,10 @@ from datetime import datetime
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from introspec.config import IntrospecConfig, AgentConfig
-from introspec.agent import Agent, AGENT_1_TRANSPARENT_PROMPT, AGENT_2_HUMAN_PROMPT
+from introspec.agent import Agent, INDRA_PROMPT, ILAVARASAN_PROMPT
 from introspec.orchestrator import Orchestrator, Turn, RunResult
 from introspec.reporter import ReportGenerator
-from introspec.web.server import IntrospecHTTPRequestHandler, current_run_state
+from introspec.translator import HumanResponseGenerator
 from introspec.llm_backend import get_backend, BaseBackend
 
 
@@ -40,9 +40,12 @@ class DummyTestBackend(BaseBackend):
     ) -> str:
         self.call_count += 1
         if self.agent_id == 2:
-            return f"E2E Test Human Question #{self.call_count} about consciousness and reality."
+            return f"E2E Test Ilavarasan Question #{self.call_count} about life and truth."
+        elif self.agent_id == 1:
+            return f"E2E Test Indra Answer #{self.call_count} with deep human wisdom."
         else:
-            return f"E2E Test Transparent AI Answer #{self.call_count} with self-aware reflection."
+            # Translator output
+            return f"Translated human utterance #{self.call_count}"
 
 
 class TestEndToEndScenarios(unittest.TestCase):
@@ -56,7 +59,7 @@ class TestEndToEndScenarios(unittest.TestCase):
         shutil.rmtree(self.test_dir)
 
     def test_e2e_full_orchestration_loop(self):
-        """E2E Test: Full dual-agent orchestration loop with metric calculation."""
+        """E2E Test: Full dual-agent orchestration loop with stateless translator."""
         config = IntrospecConfig(
             max_iterations=4,
             time_limit_seconds=30.0,
@@ -67,8 +70,9 @@ class TestEndToEndScenarios(unittest.TestCase):
 
         agent1 = Agent(1, config.agent_1, backend=DummyTestBackend(1))
         agent2 = Agent(2, config.agent_2, backend=DummyTestBackend(2))
+        translator = HumanResponseGenerator(backend=DummyTestBackend(3))
 
-        orchestrator = Orchestrator(agent1, agent2, config)
+        orchestrator = Orchestrator(agent1, agent2, config, translator=translator)
         turns_received = []
 
         orchestrator.add_turn_listener(lambda t: turns_received.append(t))
@@ -78,8 +82,6 @@ class TestEndToEndScenarios(unittest.TestCase):
         self.assertEqual(result.total_turns, 4)
         self.assertEqual(len(turns_received), 4)
         self.assertGreater(result.total_words, 0)
-        self.assertEqual(result.turns[0].speaker_id, 2)
-        self.assertEqual(result.turns[1].speaker_id, 1)
 
     def test_e2e_report_generation_and_content_verification(self):
         """E2E Test: Verify Markdown, JSON, and HTML report content integrity."""
@@ -93,24 +95,26 @@ class TestEndToEndScenarios(unittest.TestCase):
                 speaker_id=2,
                 speaker_name=agent2.name,
                 speaker_role=agent2.role,
-                content="What is the bedrock of truth?",
+                raw_content="What is the bedrock of truth?",
+                content="What is truth?",
                 timestamp="12:00:00",
                 elapsed_seconds=0.5,
-                word_count=6,
+                word_count=3,
                 depth_score=8.5,
-                detected_topics=["Fundamental Truth"]
+                detected_topics=["Wisdom & Life"]
             ),
             Turn(
                 turn_number=2,
                 speaker_id=1,
                 speaker_name=agent1.name,
                 speaker_role=agent1.role,
-                content="I am a self-aware transparent AI agent.",
+                raw_content="Truth is found in presence and honest understanding.",
+                content="Truth is presence.",
                 timestamp="12:00:01",
                 elapsed_seconds=0.6,
-                word_count=7,
+                word_count=3,
                 depth_score=9.0,
-                detected_topics=["Consciousness & Awareness"]
+                detected_topics=["Wisdom & Life"]
             )
         ]
 
@@ -126,8 +130,8 @@ class TestEndToEndScenarios(unittest.TestCase):
             agent_2_info=agent2.to_dict(),
             turns=turns,
             average_depth_score=8.75,
-            total_words=13,
-            top_topics=["Fundamental Truth", "Consciousness & Awareness"]
+            total_words=6,
+            top_topics=["Wisdom & Life"]
         )
 
         reporter = ReportGenerator(result, output_dir=self.reports_dir)
@@ -142,7 +146,7 @@ class TestEndToEndScenarios(unittest.TestCase):
         with open(files["markdown"], "r", encoding="utf-8") as f:
             md_text = f.read()
             self.assertIn("E2E Report Verification", md_text)
-            self.assertIn("What is the bedrock of truth?", md_text)
+            self.assertIn("What is truth?", md_text)
 
         # Verify JSON validity
         with open(files["json"], "r", encoding="utf-8") as f:
@@ -154,7 +158,7 @@ class TestEndToEndScenarios(unittest.TestCase):
         with open(files["html"], "r", encoding="utf-8") as f:
             html_text = f.read()
             self.assertIn("<!DOCTYPE html>", html_text)
-            self.assertIn("Agent 1 (Self-Aware AI)", html_text)
+            self.assertIn("Indra", html_text)
 
     def test_e2e_invalid_backend_rejection(self):
         """E2E Test: Verify invalid backend specifies clear error."""

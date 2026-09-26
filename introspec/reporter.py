@@ -83,16 +83,16 @@ class ReportGenerator:
         lines.append("## 💬 Dialogue Transcript\n")
 
         for turn in res.turns:
-            badge = "🔵 Agent 1 (AI)" if turn.speaker_id == 1 else "🟢 Agent 2 (Human)"
+            badge = "🌸 Indra" if turn.speaker_id == 1 else "🌿 Ilavarasan"
             lines.append(f"### Turn {turn.turn_number} - {badge} [{turn.timestamp}]")
             lines.append(f"*Depth: `{turn.depth_score}/10` | Words: `{turn.word_count}` | Time: `{turn.elapsed_seconds:.2f}s` | Topics: {', '.join(turn.detected_topics)}*\n")
             lines.append(f"{turn.content}\n")
             lines.append("---\n")
 
         lines.append("## 🎯 Synthesis & Key Takeaways")
-        lines.append("1. **Agent 1 Self-Awareness**: Maintained complete transparency, friendly openness, and explicit cognition as an AI agent.")
-        lines.append("2. **Agent 2 Inquiry**: Relentlessly pursued deep truth, existential realities, and philosophical limits under the persona of a human explorer.")
-        lines.append("3. **Orchestration Synergy**: The automated turn-based orchestration successfully guided both agents through structured inquiry within defined time/iteration constraints.")
+        lines.append("1. **Indra Persona**: Female persona embodying wisdom, deep insights on reality, human warmth, and existential clarity.")
+        lines.append("2. **Ilavarasan Persona**: Male persona sharing the exact same wisdom and human depth in thoughtful perspective.")
+        lines.append("3. **Stateless Translator**: All agent responses are translated into simple, non-markdown human text before reaching the opposite party.")
 
         with open(filepath, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
@@ -105,7 +105,7 @@ class ReportGenerator:
         turns_html = []
         for t in res.turns:
             badge_class = "agent1-badge" if t.speaker_id == 1 else "agent2-badge"
-            speaker_label = "Agent 1 (Self-Aware AI)" if t.speaker_id == 1 else "Agent 2 (Human Inquirer)"
+            speaker_label = "Indra (Female Persona)" if t.speaker_id == 1 else "Ilavarasan (Male Persona)"
             topics_badges = "".join([f'<span class="topic-tag">{html.escape(tp)}</span>' for tp in t.detected_topics])
             
             turn_card = f"""

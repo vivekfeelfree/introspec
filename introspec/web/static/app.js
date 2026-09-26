@@ -2,14 +2,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const backendSelect = document.getElementById('backendSelect');
     const apiKeyGroup = document.getElementById('apiKeyGroup');
     const apiKeyInput = document.getElementById('apiKeyInput');
+    const initialSpeakerSelect = document.getElementById('initialSpeakerSelect');
     const iterationsInput = document.getElementById('iterationsInput');
     const iterVal = document.getElementById('iterVal');
-    const timeLimitInput = document.getElementById('timeLimitInput');
-    const timeVal = document.getElementById('timeVal');
 
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const welcomeStartBtn = document.getElementById('welcomeStartBtn');
+
+    const pauseBtn = document.getElementById('pauseBtn');
+    const targetPersonaSelect = document.getElementById('targetPersonaSelect');
+    const interruptionInput = document.getElementById('interruptionInput');
+    const sendInterruptionBtn = document.getElementById('sendInterruptionBtn');
 
     const menuToggleBtn = document.getElementById('menuToggleBtn');
     const closeSidebarBtn = document.getElementById('closeSidebarBtn');
@@ -33,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let pollInterval = null;
     let renderedTurnCount = 0;
     let activeThinkingCard = null;
+    let isPaused = false;
 
     // Mobile Drawer Handlers
     function openSidebar() {
@@ -49,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeSidebar);
     if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
 
-    // Toggle API Key input display based on provider
+    // Toggle API Key input display
     backendSelect.addEventListener('change', () => {
         const val = backendSelect.value;
         if (['gemini', 'openai', 'anthropic'].includes(val)) {
@@ -59,21 +64,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Range slider labels
+    // Range slider label
     iterationsInput.addEventListener('input', () => {
-        iterVal.textContent = iterationsInput.value;
+        const val = parseInt(iterationsInput.value);
+        iterVal.textContent = val === 0 ? 'Unlimited' : `${val} turns`;
     });
 
-    timeLimitInput.addEventListener('input', () => {
-        timeVal.textContent = timeLimitInput.value;
-    });
-
-    // Launch Trial Trigger Function
-    async function launchTrial() {
+    // Launch Session Trigger Function
+    async function launchSession() {
         closeSidebar();
+        const maxIters = parseInt(iterationsInput.value);
         const payload = {
-            max_iterations: parseInt(iterationsInput.value),
-            time_limit: parseFloat(timeLimitInput.value),
+            max_iterations: maxIters === 0 ? None : maxIters,
+            time_limit: null,
+            initial_speaker: initialSpeakerSelect.value,
             backend_provider: backendSelect.value,
             gemini_api_key: apiKeyInput.value,
             openai_api_key: apiKeyInput.value,
@@ -84,11 +88,10 @@ document.addEventListener('DOMContentLoaded', () => {
         stopBtn.disabled = false;
         renderedTurnCount = 0;
         downloadGroup.style.display = 'none';
-        reportStatus.textContent = 'Orchestration starting...';
+        reportStatus.textContent = 'Session starting...';
 
-        // Clear chat and show initial loading card
         chatContainer.innerHTML = '';
-        showThinkingIndicator('Starting dual-agent orchestration session...');
+        showThinkingIndicator('Initializing Indra & Ilavarasan human dialogue...');
 
         try {
             const resp = await fetch('/api/start', {
@@ -112,16 +115,79 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    startBtn.addEventListener('click', launchTrial);
-    if (welcomeStartBtn) welcomeStartBtn.addEventListener('click', launchTrial);
+    startBtn.addEventListener('click', launchSession);
+    if (welcomeStartBtn) welcomeStartBtn.addEventListener('click', launchSession);
 
     // Stop Orchestration
     stopBtn.addEventListener('click', async () => {
         try {
             await fetch('/api/stop', { method: 'POST' });
-            reportStatus.textContent = 'Stop requested... finishing active turn.';
+            reportStatus.textContent = 'Stop requested... completing active turn.';
         } catch (err) {
             console.error(err);
+        }
+    });
+
+    // Pause / Resume Controls
+    pauseBtn.addEventListener('click', async () => {
+        try {
+            const endpoint = isPaused ? '/api/resume' : '/api/pause';
+            const resp = await fetch(endpoint, { method: 'POST' });
+            const data = await resp.json();
+            if (data.is_paused !== undefined) {
+                isPaused = data.is_paused;
+                updatePauseButtonState(isPaused);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    });
+
+    function updatePauseButtonState(paused) {
+        isPaused = paused;
+        if (isPaused) {
+            pauseBtn.textContent = '▶️ Resume Auto';
+            pauseBtn.classList.remove('btn-outline');
+            pauseBtn.classList.add('btn-accent');
+        } else {
+            pauseBtn.textContent = '⏸️ Pause';
+            pauseBtn.classList.remove('btn-accent');
+            pauseBtn.classList.add('btn-outline');
+        }
+    }
+
+    // Interruption / Message Injection
+    async function sendInterruption() {
+        const msg = interruptionInput.value.trim();
+        if (!msg) return;
+
+        const target = targetPersonaSelect.value;
+        sendInterruptionBtn.disabled = true;
+
+        try {
+            const resp = await fetch('/api/inject', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target: target, message: msg })
+            });
+            const data = await resp.json();
+            if (data.error) {
+                alert(data.error);
+            } else {
+                interruptionInput.value = '';
+            }
+        } catch (err) {
+            alert('Failed to send message: ' + err.message);
+        } finally {
+            sendInterruptionBtn.disabled = false;
+        }
+    }
+
+    sendInterruptionBtn.addEventListener('click', sendInterruption);
+    interruptionInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            sendInterruption();
         }
     });
 
@@ -135,8 +201,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const resp = await fetch('/api/status');
             const state = await resp.json();
 
-            // Update UI status bar
-            updateStatusBar(state.status, state.progress_turn, state.max_iterations);
+            // Update UI status bar & pause state
+            updateStatusBar(state.status, state.progress_turn, state.is_paused);
+            updatePauseButtonState(state.is_paused || false);
 
             // Render new turns
             if (state.turns && state.turns.length > renderedTurnCount) {
@@ -146,16 +213,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderedTurnCount = state.turns.length;
 
                 // Update metrics
-                updateMetrics(state.turns, state.max_iterations);
+                updateMetrics(state.turns);
 
-                // Show thinking indicator for NEXT turn if trial still running
-                if (state.status === 'running' && renderedTurnCount < state.max_iterations) {
-                    const nextSpeaker = (renderedTurnCount % 2 === 0) ? 'Agent 2 (Human Inquirer)' : 'Agent 1 (Transparent AI)';
-                    showThinkingIndicator(`${nextSpeaker} is reasoning & generating response...`);
+                // Show thinking indicator for NEXT turn if running and not paused
+                if (state.status === 'running' && !state.is_paused) {
+                    showThinkingIndicator('Translating human thought & generating next response...');
                 }
             } else if (state.status === 'running' && renderedTurnCount === 0) {
-                const initialSpeaker = 'Agent 2 (Human Inquirer)';
-                showThinkingIndicator(`${initialSpeaker} is generating opening question...`);
+                showThinkingIndicator('Waiting for initial dialogue utterance...');
+            } else if (state.status === 'running' && state.is_paused) {
+                removeThinkingIndicator();
             }
 
             // Handle completion or error
@@ -164,14 +231,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 removeThinkingIndicator();
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
-                reportStatus.textContent = '✅ Trial completed. Reports ready!';
+                reportStatus.textContent = '✅ Session completed. Reports ready!';
                 showDownloadLinks(state.generated_files);
             } else if (state.status === 'error') {
                 clearInterval(pollInterval);
                 removeThinkingIndicator();
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
-                const errorMsg = state.error_message || 'Trial failed to execute';
+                const errorMsg = state.error_message || 'Session failed to execute';
                 reportStatus.textContent = '❌ Error: ' + errorMsg;
                 showErrorCard(errorMsg);
             }
@@ -180,13 +247,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateStatusBar(status, turnNum, maxTurns) {
-        statusDot.className = 'status-dot status-' + status;
-        statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    function updateStatusBar(status, turnNum, paused) {
+        statusDot.className = 'status-dot status-' + (paused ? 'paused' : status);
+        const displayStatus = paused ? 'Paused' : (status.charAt(0).toUpperCase() + status.slice(1));
+        statusText.textContent = displayStatus;
     }
 
-    function updateMetrics(turns, maxTurns) {
-        metricTurns.textContent = `${turns.length}/${maxTurns}`;
+    function updateMetrics(turns) {
+        metricTurns.textContent = `${turns.length} Turns`;
         const totalWords = turns.reduce((acc, t) => acc + t.word_count, 0);
         metricWords.textContent = `${totalWords}w`;
 
@@ -198,14 +266,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderTurn(turn) {
         const turnDiv = document.createElement('div');
-        const isAgent1 = turn.speaker_id === 1;
-        turnDiv.className = `turn-item turn-speaker-${turn.speaker_id} turn-agent${turn.speaker_id}`;
+        const isIndra = turn.speaker_id === 1;
+        
+        let cardClass = `turn-item turn-speaker-${turn.speaker_id} `;
+        cardClass += isIndra ? 'turn-indra' : 'turn-ilavarasan';
+        if (turn.is_user_injection) cardClass += ' turn-user-injection';
+        turnDiv.className = cardClass;
 
         const topics = (turn.detected_topics || []).map(tp => `<span class="topic-chip">${escapeHtml(tp)}</span>`).join('');
 
+        let speakerBadge = escapeHtml(turn.speaker_name);
+        if (turn.is_user_injection) {
+            speakerBadge += ' 👤 [User Interruption]';
+        }
+
         turnDiv.innerHTML = `
             <div class="turn-meta">
-                <span class="turn-speaker-badge">${escapeHtml(turn.speaker_name)} (#${turn.turn_number})</span>
+                <span class="turn-speaker-badge">${speakerBadge} (#${turn.turn_number})</span>
                 <div class="turn-pills">
                     <span class="pill-tag">⏱️ ${turn.elapsed_seconds.toFixed(1)}s</span>
                     <span class="pill-tag">🧠 ${turn.depth_score}/10</span>
@@ -245,11 +322,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const errDiv = document.createElement('div');
         errDiv.className = 'error-card';
         errDiv.innerHTML = `
-            <div class="error-header">⚠️ Trial Execution Notice</div>
+            <div class="error-header">⚠️ Session Notice</div>
             <div class="error-body">${escapeHtml(message)}</div>
             <button class="btn btn-primary error-retry-btn">Try Again</button>
         `;
-        errDiv.querySelector('.error-retry-btn').addEventListener('click', launchTrial);
+        errDiv.querySelector('.error-retry-btn').addEventListener('click', launchSession);
         chatContainer.appendChild(errDiv);
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }

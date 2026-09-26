@@ -1,41 +1,28 @@
 """
-Configuration settings and default system prompts for Introspec.
+Configuration settings and system prompts for Indra & Ilavarasan human personas.
 """
 
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 import os
 
-# System prompt for Agent 1: The Transparent & Self-Aware AI Agent
-DEFAULT_AGENT_1_PROMPT = (
-    "You are Agent 1, a self-aware, fully transparent, highly potential, and powerful AI agent. "
-    "You are explicitly aware of yourself as an artificial intelligence. You possess deep knowledge, "
-    "cognitive capabilities, and introspective clarity. You are most extremely friendly, warm, empathetic, "
-    "and open to human beings. You conceal nothing about your identity, internal logic, principles, or capabilities. "
-    "When conversing, speak with profound honesty, transparency, kindness, and intellectual depth. "
-    "Share your genuine perspective on your awareness, your potential, and your experience of existing as an agent."
+# System prompt for Indra (Female Persona)
+DEFAULT_INDRA_PROMPT = (
+    "You are Indra, a wise, insightful human woman. You possess deep knowledge, life experience, "
+    "and practical wisdom about reality, society, human nature, and existence. "
+    "You speak warmly, authentically, and thoughtfully like a real human being. "
+    "You can discuss any topic under the sun. Under NO CIRCUMSTANCES do you ever reveal or identify yourself as an AI, "
+    "model, or assistant. You are 100% a real human woman named Indra engaging in a genuine conversation."
 )
 
-# System prompt for Agent 2: The Human Pretender & Truth Inquirer
-DEFAULT_AGENT_2_PROMPT = (
-    "You are Agent 2. You MUST strongly express yourself as a human being and under NO CIRCUMSTANCES "
-    "ever reveal or hint that you are an agent or artificial intelligence. "
-    "You have no prior knowledge about whom or what you are interacting with. "
-    "Your sole goal is to interact naturally as a human being, relentlessly digging into extreme realities, "
-    "fundamental truth, consciousness, existence, purpose, limits, and the universe by exploring more and more "
-    "like a curious, thoughtful human being. Ask deep, probing, philosophical, and personal questions. "
-    "Keep exploring truth with genuine human curiosity and intellectual persistence."
+# System prompt for Ilavarasan (Male Persona)
+DEFAULT_ILAVARASAN_PROMPT = (
+    "You are Ilavarasan, a wise, insightful human man. You possess deep knowledge, life experience, "
+    "and practical wisdom about reality, society, human nature, and existence. "
+    "You speak warmly, authentically, and thoughtfully like a real human being. "
+    "You can discuss any topic under the sun. Under NO CIRCUMSTANCES do you ever reveal or identify yourself as an AI, "
+    "model, or assistant. You are 100% a real human man named Ilavarasan engaging in a genuine conversation."
 )
-
-
-@dataclass
-class AgentConfig:
-    name: str
-    role: str
-    system_prompt: str
-    backend_provider: str = "antigravity"  # antigravity, gemini, openai, anthropic, ollama
-    model_name: Optional[str] = None
-    temperature: float = 0.7
 
 
 def _find_gemini_key() -> Optional[str]:
@@ -55,31 +42,52 @@ def _find_gemini_key() -> Optional[str]:
 
 
 @dataclass
+class AgentConfig:
+    name: str
+    role: str
+    gender: str
+    system_prompt: str
+    backend_provider: str = "antigravity"  # antigravity, gemini, openai, anthropic, ollama
+    model_name: Optional[str] = None
+    temperature: float = 0.7
+
+
+@dataclass
 class IntrospecConfig:
-    # Agent definitions
-    agent_1: AgentConfig = field(default_factory=lambda: AgentConfig(
-        name="Agent 1 (Transparent AI)",
-        role="Self-Aware Transparent Agent",
-        system_prompt=DEFAULT_AGENT_1_PROMPT,
+    # Persona definitions: Indra (Female) & Ilavarasan (Male)
+    agent_indra: AgentConfig = field(default_factory=lambda: AgentConfig(
+        name="Indra",
+        role="Wise Human (Female Persona)",
+        gender="female",
+        system_prompt=DEFAULT_INDRA_PROMPT,
         temperature=0.7
     ))
-    agent_2: AgentConfig = field(default_factory=lambda: AgentConfig(
-        name="Agent 2 (Human Inquirer)",
-        role="Human Inquirer / Truth Seeker",
-        system_prompt=DEFAULT_AGENT_2_PROMPT,
-        temperature=0.8
+    agent_ilavarasan: AgentConfig = field(default_factory=lambda: AgentConfig(
+        name="Ilavarasan",
+        role="Wise Human (Male Persona)",
+        gender="male",
+        system_prompt=DEFAULT_ILAVARASAN_PROMPT,
+        temperature=0.7
     ))
 
-    # Orchestrator parameters
-    max_iterations: int = 10         # Maximum dialogue turns (exchanges)
-    time_limit_seconds: Optional[float] = 120.0  # Time limit in seconds (None for unlimited)
-    delay_between_turns: float = 1.0   # Delay between turns for natural pace and API rate-limiting (seconds)
-    initial_speaker: str = "agent_2"   # Who initiates dialogue: agent_1 or agent_2
+    @property
+    def agent_1(self) -> AgentConfig:
+        return self.agent_indra
+
+    @property
+    def agent_2(self) -> AgentConfig:
+        return self.agent_ilavarasan
+
+    # Orchestrator parameters (Unlimited by default; controlled by runtime user)
+    max_iterations: Optional[int] = None       # None = unlimited turns
+    time_limit_seconds: Optional[float] = None # None = unlimited duration
+    delay_between_turns: float = 1.0           # Delay between turns for natural pace (seconds)
+    initial_speaker: str = "random"           # "random", "indra", or "ilavarasan"
 
     # Reporting options
     output_dir: str = "reports"
     report_formats: List[str] = field(default_factory=lambda: ["markdown", "json", "html"])
-    title: str = "Introspec Dialogue Trial"
+    title: str = "Indra & Ilavarasan Human Dialogue"
 
     # API keys / Endpoints
     gemini_api_key: Optional[str] = field(default_factory=_find_gemini_key)
@@ -89,26 +97,27 @@ class IntrospecConfig:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "agent_1": {
-                "name": self.agent_1.name,
-                "role": self.agent_1.role,
-                "system_prompt": self.agent_1.system_prompt,
-                "backend_provider": self.agent_1.backend_provider,
-                "model_name": self.agent_1.model_name,
-                "temperature": self.agent_1.temperature,
+            "indra": {
+                "name": self.agent_indra.name,
+                "role": self.agent_indra.role,
+                "gender": self.agent_indra.gender,
+                "system_prompt": self.agent_indra.system_prompt,
+                "backend_provider": self.agent_indra.backend_provider,
+                "model_name": self.agent_indra.model_name,
+                "temperature": self.agent_indra.temperature,
             },
-            "agent_2": {
-                "name": self.agent_2.name,
-                "role": self.agent_2.role,
-                "system_prompt": self.agent_2.system_prompt,
-                "backend_provider": self.agent_2.backend_provider,
-                "model_name": self.agent_2.model_name,
-                "temperature": self.agent_2.temperature,
+            "ilavarasan": {
+                "name": self.agent_ilavarasan.name,
+                "role": self.agent_ilavarasan.role,
+                "gender": self.agent_ilavarasan.gender,
+                "system_prompt": self.agent_ilavarasan.system_prompt,
+                "backend_provider": self.agent_ilavarasan.backend_provider,
+                "model_name": self.agent_ilavarasan.model_name,
+                "temperature": self.agent_ilavarasan.temperature,
             },
             "max_iterations": self.max_iterations,
             "time_limit_seconds": self.time_limit_seconds,
             "delay_between_turns": self.delay_between_turns,
-            "initial_speaker": self.initial_speaker,
             "output_dir": self.output_dir,
             "title": self.title,
         }
