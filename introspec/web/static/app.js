@@ -75,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
         closeSidebar();
         const maxIters = parseInt(iterationsInput.value);
         const payload = {
-            max_iterations: maxIters === 0 ? None : maxIters,
+            max_iterations: maxIters === 0 ? null : maxIters,
             time_limit: null,
             initial_speaker: initialSpeakerSelect.value,
             backend_provider: backendSelect.value,
