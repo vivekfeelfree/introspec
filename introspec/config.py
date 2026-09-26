@@ -81,7 +81,7 @@ class IntrospecConfig:
     # Orchestrator parameters (Unlimited by default; controlled by runtime user)
     max_iterations: Optional[int] = None       # None = unlimited turns
     time_limit_seconds: Optional[float] = None # None = unlimited duration
-    delay_between_turns: float = 1.0           # Delay between turns for natural pace (seconds)
+    delay_between_turns: float = 3.0           # Delay between turns to respect API rate limits (seconds)
     initial_speaker: str = "random"           # "random", "indra", or "ilavarasan"
 
     # Reporting options

@@ -208,7 +208,7 @@ class GeminiBackend(BaseBackend):
                         break
 
                     if attempt < max_retries - 1 and ("429" in err_str or "503" in err_str or "ResourceExhausted" in err_str):
-                        time.sleep((attempt + 1) * 2.0)
+                        time.sleep((attempt + 1) * 3.5)
                         continue
                     else:
                         break
