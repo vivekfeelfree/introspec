@@ -89,9 +89,9 @@ class AntigravityBackend(BaseBackend):
 class GeminiBackend(BaseBackend):
     """Google Gemini API Backend (Gemini 3.6 Flash / 2.5 Flash / Pro)."""
 
-    FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"]
+    FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash"]
 
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-3.6-flash"):
         if not api_key:
             raise ValueError("Gemini API key is required. Set GEMINI_API_KEY environment variable or pass --api-key.")
         self.api_key = api_key
