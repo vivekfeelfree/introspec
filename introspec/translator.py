@@ -46,6 +46,11 @@ class HumanResponseGenerator:
         if not raw_text or not raw_text.strip():
             return raw_text
 
+        # Brief delay to respect LLM rate limits between back-to-back agent calls
+        import time
+        import re
+        time.sleep(0.8)
+
         history = [
             {"role": "user", "content": f"Translate this into a simple, non-markdown human chat message:\n\n{raw_text}"}
         ]
@@ -68,7 +73,7 @@ class HumanResponseGenerator:
             return cleaned if cleaned else raw_text
         except Exception as e:
             IntrospecLogger.log_error("HumanResponseGenerator.translate", e)
-            # Fallback: simple cleaning of raw text if translation API fails
+            # Fallback: smart cleaning of raw text if translation API fails
             cleaned = (
                 raw_text.replace("**", "")
                 .replace("*", "")
@@ -76,4 +81,8 @@ class HumanResponseGenerator:
                 .replace("`", "")
                 .strip()
             )
+            # Take first 2 sentences for natural human brevity
+            sentences = re.split(r'(?<=[.!?])\s+', cleaned)
+            if len(sentences) > 2:
+                cleaned = " ".join(sentences[:2])
             return cleaned
