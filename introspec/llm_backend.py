@@ -89,7 +89,7 @@ class AntigravityBackend(BaseBackend):
 class GeminiBackend(BaseBackend):
     """Google Gemini API Backend (Gemini 3.6 Flash / 2.5 Flash / Pro)."""
 
-    FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
+    FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"]
 
     def __init__(self, api_key: str, model: str = "gemini-3.6-flash"):
         if not api_key:
@@ -164,7 +164,7 @@ class GeminiBackend(BaseBackend):
         last_error = None
         for current_model in models_to_try:
             start_t = time.time()
-            max_retries = 2
+            max_retries = 3
             for attempt in range(max_retries):
                 try:
                     text_output, finish_reason = self._call_gemini_api(
@@ -204,8 +204,11 @@ class GeminiBackend(BaseBackend):
                         f"(Attempt {attempt + 1}/{max_retries} - {err_str})"
                     )
 
+                    if "404" in err_str:
+                        break
+
                     if attempt < max_retries - 1 and ("429" in err_str or "503" in err_str or "ResourceExhausted" in err_str):
-                        time.sleep(1.0)
+                        time.sleep(2.5)
                         continue
                     else:
                         break
