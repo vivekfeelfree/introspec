@@ -14,6 +14,32 @@ from abc import ABC, abstractmethod
 
 from introspec.logger import IntrospecLogger
 
+# Optional official SDK imports
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GENAI_SDK = True
+except ImportError:
+    HAS_GENAI_SDK = False
+
+try:
+    import google.generativeai as genai_legacy
+    HAS_LEGACY_GENAI_SDK = True
+except ImportError:
+    HAS_LEGACY_GENAI_SDK = False
+
+try:
+    import openai
+    HAS_OPENAI_SDK = True
+except ImportError:
+    HAS_OPENAI_SDK = False
+
+try:
+    import anthropic
+    HAS_ANTHROPIC_SDK = True
+except ImportError:
+    HAS_ANTHROPIC_SDK = False
+
 
 class BaseBackend(ABC):
     """Abstract Base Class for LLM Backends."""
@@ -105,7 +131,44 @@ class GeminiBackend(BaseBackend):
         temperature: float,
         max_tokens: int,
     ) -> tuple[str, str]:
-        """Internal helper for making HTTP request to Gemini API."""
+        """Internal helper for making API call to Gemini (prefers official SDKs if installed)."""
+        if HAS_GENAI_SDK:
+            try:
+                client = genai.Client(api_key=self.api_key)
+                sdk_contents = []
+                for msg in conversation_history:
+                    role = "user" if msg["role"] in ["user", "human_inquirer"] else "model"
+                    sdk_contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+                
+                resp = client.models.generate_content(
+                    model=current_model,
+                    contents=sdk_contents or [types.Content(role="user", parts=[types.Part.from_text(text="Hello")])],
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=temperature,
+                        max_output_tokens=max_tokens,
+                    )
+                )
+                return resp.text or "", "STOP"
+            except Exception as sdk_err:
+                IntrospecLogger.log_error(f"google-genai SDK call error ({current_model})", sdk_err)
+
+        if HAS_LEGACY_GENAI_SDK:
+            try:
+                genai_legacy.configure(api_key=self.api_key)
+                model_inst = genai_legacy.GenerativeModel(
+                    model_name=current_model,
+                    system_instruction=system_prompt,
+                )
+                history_text = "\n".join([f"{m['role']}: {m['content']}" for m in conversation_history]) if conversation_history else "Hello"
+                resp = model_inst.generate_content(
+                    history_text,
+                    generation_config={"temperature": temperature, "max_output_tokens": max_tokens}
+                )
+                return resp.text or "", "STOP"
+            except Exception as legacy_err:
+                IntrospecLogger.log_error(f"google-generativeai SDK call error ({current_model})", legacy_err)
+
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={self.api_key}"
         
         contents = [
@@ -218,7 +281,7 @@ class GeminiBackend(BaseBackend):
 
 
 class OpenAIBackend(BaseBackend):
-    """OpenAI API Backend using standard urllib."""
+    """OpenAI API Backend (supports official openai SDK)."""
 
     def __init__(self, api_key: str, model: str = "gpt-4o"):
         if not api_key:
@@ -233,13 +296,25 @@ class OpenAIBackend(BaseBackend):
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ) -> str:
-        url = "https://api.openai.com/v1/chat/completions"
-        
         messages = [{"role": "system", "content": system_prompt}]
         for msg in conversation_history:
             role = "user" if msg["role"] in ["user", "human_inquirer"] else "assistant"
             messages.append({"role": role, "content": msg["content"]})
 
+        if HAS_OPENAI_SDK:
+            try:
+                client = openai.OpenAI(api_key=self.api_key)
+                resp = client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return resp.choices[0].message.content or ""
+            except Exception as sdk_err:
+                IntrospecLogger.log_error("OpenAI SDK Error, using REST fallback", sdk_err)
+
+        url = "https://api.openai.com/v1/chat/completions"
         payload = {
             "model": self.model,
             "messages": messages,
@@ -267,7 +342,7 @@ class OpenAIBackend(BaseBackend):
 
 
 class AnthropicBackend(BaseBackend):
-    """Anthropic API Backend using standard urllib."""
+    """Anthropic API Backend (supports official anthropic SDK)."""
 
     def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022"):
         if not api_key:
@@ -282,6 +357,28 @@ class AnthropicBackend(BaseBackend):
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ) -> str:
+        messages = []
+        for msg in conversation_history:
+            role = "user" if msg["role"] in ["user", "human_inquirer"] else "assistant"
+            messages.append({"role": role, "content": msg["content"]})
+
+        if not messages:
+            messages.append({"role": "user", "content": "Hello."})
+
+        if HAS_ANTHROPIC_SDK:
+            try:
+                client = anthropic.Anthropic(api_key=self.api_key)
+                resp = client.messages.create(
+                    model=self.model,
+                    system=system_prompt,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                return resp.content[0].text or ""
+            except Exception as sdk_err:
+                IntrospecLogger.log_error("Anthropic SDK Error, using REST fallback", sdk_err)
+
         url = "https://api.anthropic.com/v1/messages"
         
         messages = []
